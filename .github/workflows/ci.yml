@@ -345,10 +345,10 @@ jobs:
         run: sccache --start-server
       - name: Build
         run: |
-          sudo apt-get install -y musl-tools
-          make RELEASE=release TARGET=x86_64-unknown-linux-musl build_test
+          cargo build --release --bin fluvio 
       - name: Make image
         run: |
+          sudo apt-get install -y musl-tools
           make RELEASE=true minikube_image
       - name: Install latest Fluvio cluster
         run: |
