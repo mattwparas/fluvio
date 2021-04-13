@@ -2,9 +2,8 @@ name: Hourly tests
 
 on:
   schedule:
-    - cron: '0 * * * *' # run at the start of every hour 
+    - cron: '0 * * * *'
   workflow_dispatch:
-
 jobs:
   hourly:
     name: ${{ matrix.test.name }} (${{ matrix.cluster_type }} ${{ matrix.os }})
@@ -19,17 +18,10 @@ jobs:
           - name: smoke 
             cmd: cargo run --release --bin flv-test -- smoke --develop --disable-install -- --producer-iteration 100 --producer-record-size 1000 
           - name: producer stress (benchmark mode)
-            cmd: cargo run --release --bin flv-test -- producer_stress --develop --disable-install --benchmark -- --iteration 100 --producers 5 
+            cmd: cargo run --release --bin flv-test -- producer_stress --develop --disable-install --benchmark -- --iteration 5 --producers 5 
         include:
           - os: ubuntu-latest
             sccache-path: /home/runner/.cache/sccache
-          #- os: macos-latest
-          #  sccache-path: /Users/runner/Library/Caches/Mozilla.sccache
-        #exclude:
-        #  - os: macos-latest
-        #    rust: stable
-        #    make:
-        #      name: Clippy
     env:
       RUST_BACKTRACE: full
       RUSTC_WRAPPER: sccache
@@ -39,7 +31,6 @@ jobs:
       # SCCACHE_RECACHE: 1 # Uncomment this to clear cache, then comment it back out
     steps:
       - uses: actions/checkout@v2
-
       #- Install rust
       - name: Install ${{ matrix.rust }}
         uses: actions-rs/toolchain@v1
@@ -63,7 +54,7 @@ jobs:
       #  - Matrix: local, k8
         run: |
           curl -fsS https://packages.fluvio.io/v1/install.sh | bash
-          ~/.fluvio/bin/fluvio cluster start
+          ~/.fluvio/bin/fluvio cluster start --local
 
       - name: Install sccache (ubuntu-latest)
         if: matrix.os == 'ubuntu-latest'
@@ -114,4 +105,3 @@ jobs:
         run: sccache --show-stats
       - name: Stop sccache server
         run: sccache --stop-server || true
-
