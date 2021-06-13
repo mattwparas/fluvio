@@ -61,15 +61,20 @@ impl StreamFetchHandler {
         let isolation = msg.isolation;
         let replica = ReplicaKey::new(msg.topic, msg.partition);
         let max_bytes = msg.max_bytes as u32;
-
-        info!("Decompressing the wasm binary");
         let mut sm_bytes = Vec::new();
-        zstd::stream::copy_decode(msg.wasm_module.as_slice(), &mut sm_bytes).map_err(|err| {
-            FlvSocketError::IoError(IoError::new(
-                ErrorKind::Other,
-                format!("Error decoding the wasm binary {}", err),
-            ))
-        })?;
+
+        // If a wasm module is sent, we need to decompress it
+        if !msg.wasm_module.is_empty() {
+            info!("Decompressing the wasm binary");
+            zstd::stream::copy_decode(msg.wasm_module.as_slice(), &mut sm_bytes).map_err(
+                |err| {
+                    FlvSocketError::IoError(IoError::new(
+                        ErrorKind::Other,
+                        format!("Error decoding the wasm binary {}", err),
+                    ))
+                },
+            )?;
+        }
 
         if let Some(leader_state) = ctx.leaders_state().get(&replica) {
             let (stream_id, offset_publisher) =
