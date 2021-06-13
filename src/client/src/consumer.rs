@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures_util::stream::Stream;
-use tracing::{debug, error, trace, instrument};
+use tracing::{debug, error, info, instrument, trace};
 use once_cell::sync::Lazy;
 use futures_util::future::{Either, err};
 use futures_util::stream::{StreamExt, once, iter};
@@ -412,7 +412,17 @@ impl PartitionConsumer {
 
         if !config.wasm_module.is_empty() {
             if stream_fetch_version >= WASM_MODULE_API as i16 {
-                stream_request.wasm_module = config.wasm_module;
+                info!("Compressing the wasm module binary");
+
+                // Compress the wasm module directly into the stream request
+                zstd::stream::copy_encode(
+                    config.wasm_module.as_slice(),
+                    &mut stream_request.wasm_module,
+                    0,
+                )
+                .map_err(|err| {
+                    FluvioError::Other(format!("Error compressing the wasm binary: {:?}", err))
+                })?;
             } else {
                 return Err(FluvioError::Other("SPU does not support WASM".to_owned()));
             }

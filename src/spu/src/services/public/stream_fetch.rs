@@ -3,7 +3,7 @@ use std::time::{Instant};
 use std::io::ErrorKind;
 use std::io::Error as IoError;
 
-use tracing::{debug, trace, error, instrument};
+use tracing::{debug, error, info, instrument, trace};
 use tokio::select;
 
 use fluvio_types::event::{SimpleEvent, offsets::OffsetPublisher};
@@ -61,7 +61,15 @@ impl StreamFetchHandler {
         let isolation = msg.isolation;
         let replica = ReplicaKey::new(msg.topic, msg.partition);
         let max_bytes = msg.max_bytes as u32;
-        let sm_bytes = msg.wasm_module;
+
+        info!("Decompressing the wasm binary");
+        let mut sm_bytes = Vec::new();
+        zstd::stream::copy_decode(msg.wasm_module.as_slice(), &mut sm_bytes).map_err(|err| {
+            FlvSocketError::IoError(IoError::new(
+                ErrorKind::Other,
+                format!("Error decoding the wasm binary {}", err),
+            ))
+        })?;
 
         if let Some(leader_state) = ctx.leaders_state().get(&replica) {
             let (stream_id, offset_publisher) =

@@ -1361,6 +1361,7 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "wasm-bindgen-test",
+ "zstd",
 ]
 
 [[package]]
@@ -1877,6 +1878,7 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "wasmtime",
+ "zstd",
 ]
 
 [[package]]
