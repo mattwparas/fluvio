@@ -9,7 +9,7 @@ use anyhow::{Result, Error, anyhow};
 // use bytes::{Bytes, BytesMut};
 use tracing::{debug, warn, instrument};
 use nix::sys::uio::pread;
-use wasmtime::{Caller, Engine, Extern, Func, Instance, Module, Store, Trap, TypedFunc, Memory};
+use wasmtime::{Caller, Engine, Extern, Func, Instance, Linker, Memory, Module, Store, Trap, TypedFunc};
 
 use fluvio_future::file_slice::AsyncFileSlice;
 use dataplane::core::{Decoder, Encoder};
@@ -80,8 +80,26 @@ impl SmartStreamModuleInner {
     }
 
     pub fn create_from_binary(engine: &Engine, binary: &[u8]) -> Result<Self> {
+        // TODO add linking to WASM marshalling functions here
         let store = Store::new(&engine);
+
+        // Include linker
+        let mut linker = Linker::new(&store);
         let module = Module::from_binary(store.engine(), binary)?;
+
+        linker.module("external", &module)?;
+
+        // Load the module that we need from the given file
+        // Link it up to the existing binary, including all of the marshalling functions
+        let module = Module::from_file(
+            store.engine(),
+            "../smartstream/wasm_wrapper/target/wasm32-unknown-unknown/debug/wasm_wrapper.wasm",
+        )?;
+
+        linker.instantiate(&module)?;
+
+        // TODO
+
         Ok(Self { module, store })
     }
 
