@@ -1,5 +1,5 @@
 extern "C" {
-    fn filter(str: &[u8]) -> bool;
+    fn fluvio_filter(ptr: *const u8, len: usize) -> bool;
 }
 
 mod __system {
@@ -24,7 +24,12 @@ mod __system {
 
         let mut processed: Vec<_> = records
             .into_iter()
-            .filter(|record| super::filter(record.value.as_ref()))
+            .filter(|record| {
+                super::fluvio_filter(
+                    record.value.as_ref()[0] as *const u8,
+                    record.value.as_ref().len(),
+                )
+            })
             .collect();
 
         let mut out = vec![];

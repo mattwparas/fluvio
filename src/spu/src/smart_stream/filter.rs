@@ -9,7 +9,7 @@ use anyhow::{Result, Error, anyhow};
 // use bytes::{Bytes, BytesMut};
 use tracing::{debug, warn, instrument};
 use nix::sys::uio::pread;
-use wasmtime::{Caller, Engine, Extern, Func, Instance, Linker, Memory, Module, Store, Trap, TypedFunc};
+use wasmtime::{Caller, Engine, Extern, Instance, Linker, Memory, Module, Store, Trap, TypedFunc};
 
 use fluvio_future::file_slice::AsyncFileSlice;
 use dataplane::core::{Decoder, Encoder};
@@ -58,7 +58,7 @@ impl SmartStreamModule {
     }
 
     pub fn create_filter(&self) -> Result<SmartFilter> {
-        let write_inner = self.0.write().unwrap();
+        let mut write_inner = self.0.write().unwrap();
         write_inner.create_filter()
     }
 }
@@ -69,6 +69,7 @@ unsafe impl Sync for SmartStreamModuleInner {}
 pub struct SmartStreamModuleInner {
     module: Module,
     store: Store,
+    linker: Linker,
 }
 
 impl SmartStreamModuleInner {
@@ -76,7 +77,12 @@ impl SmartStreamModuleInner {
     pub fn create_from_path(engine: &Engine, path: impl AsRef<Path>) -> Result<Self> {
         let store = Store::new(&engine);
         let module = Module::from_file(store.engine(), path)?;
-        Ok(Self { module, store })
+        let linker = Linker::new(&store);
+        Ok(Self {
+            module,
+            store,
+            linker,
+        })
     }
 
     pub fn create_from_binary(engine: &Engine, binary: &[u8]) -> Result<Self> {
@@ -86,28 +92,22 @@ impl SmartStreamModuleInner {
         // Include linker
         let mut linker = Linker::new(&store);
         let module = Module::from_binary(store.engine(), binary)?;
+        linker.module("env", &module)?;
 
-        linker.module("external", &module)?;
-
-        // Load the module that we need from the given file
-        // Link it up to the existing binary, including all of the marshalling functions
-        let module = Module::from_file(
-            store.engine(),
-            "../smartstream/wasm_wrapper/target/wasm32-unknown-unknown/debug/wasm_wrapper.wasm",
-        )?;
-
-        linker.instantiate(&module)?;
-
-        // TODO
-
-        Ok(Self { module, store })
+        Ok(Self {
+            module,
+            store,
+            linker,
+        })
     }
 
-    pub fn create_filter(&self) -> Result<SmartFilter> {
+    pub fn create_filter(&mut self) -> Result<SmartFilter> {
         let callback = Arc::new(RecordsCallBack::new());
         let callback2 = callback.clone();
-        let copy_records = Func::wrap(
-            &self.store,
+
+        self.linker.func(
+            "env",
+            "copy_records",
             move |caller: Caller<'_>, ptr: i32, len: i32| {
                 debug!(len, "callback from wasm filter");
                 let memory = match caller.get_export("memory") {
@@ -121,9 +121,16 @@ impl SmartStreamModuleInner {
 
                 Ok(())
             },
-        );
+        )?;
 
-        let instance = Instance::new(&self.store, &self.module, &[copy_records.into()])?;
+        // We want to get the filter function from the dylib
+        // TODO make this a more reasonable way to include the bytes in the binary
+        let dylib_module = Module::from_binary(
+            self.store.engine(),
+            include_bytes!("../../../smartstream/wasm_wrapper/target/wasm32-unknown-unknown/release/wasm_wrapper.wasm"),
+        )?;
+
+        let instance = self.linker.instantiate(&dylib_module)?;
 
         let filter_fn = instance.get_typed_func::<(i32, i32), i32>(FILTER_FN_NAME)?;
 
