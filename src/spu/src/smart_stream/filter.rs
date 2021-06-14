@@ -68,6 +68,7 @@ unsafe impl Sync for SmartStreamModuleInner {}
 
 pub struct SmartStreamModuleInner {
     module: Module,
+    dylib: Module,
     store: Store,
     linker: Linker,
 }
@@ -78,8 +79,13 @@ impl SmartStreamModuleInner {
         let store = Store::new(&engine);
         let module = Module::from_file(store.engine(), path)?;
         let linker = Linker::new(&store);
+        let dylib = Module::from_binary(
+            store.engine(),
+            include_bytes!("../../../smartstream/wasm_wrapper/target/wasm32-unknown-unknown/release/wasm_wrapper.wasm"),
+        )?;
         Ok(Self {
             module,
+            dylib,
             store,
             linker,
         })
@@ -91,11 +97,19 @@ impl SmartStreamModuleInner {
 
         // Include linker
         let mut linker = Linker::new(&store);
+        // Shadowing should be allowed such that future definitions of copy records don't fail
+        linker.allow_shadowing(true);
         let module = Module::from_binary(store.engine(), binary)?;
         linker.module("env", &module)?;
 
+        let dylib = Module::from_binary(
+            store.engine(),
+            include_bytes!("../../../smartstream/wasm_wrapper/target/wasm32-unknown-unknown/release/wasm_wrapper.wasm"),
+        )?;
+
         Ok(Self {
             module,
+            dylib,
             store,
             linker,
         })
@@ -123,14 +137,7 @@ impl SmartStreamModuleInner {
             },
         )?;
 
-        // We want to get the filter function from the dylib
-        // TODO make this a more reasonable way to include the bytes in the binary
-        let dylib_module = Module::from_binary(
-            self.store.engine(),
-            include_bytes!("../../../smartstream/wasm_wrapper/target/wasm32-unknown-unknown/release/wasm_wrapper.wasm"),
-        )?;
-
-        let instance = self.linker.instantiate(&dylib_module)?;
+        let instance = self.linker.instantiate(&self.dylib)?;
 
         let filter_fn = instance.get_typed_func::<(i32, i32), i32>(FILTER_FN_NAME)?;
 
